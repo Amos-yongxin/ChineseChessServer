@@ -26,7 +26,9 @@ public:
 
 public slots:
     void slotNewConnection();
-    void slotRecv();
+    void slotRecv(QTcpSocket* fromTcpSocket, QTcpSocket* toTcpSocket, bool isRed);
+    void redSlotRecv();
+    void blackSlotRecv();
     void onBtnTryConnect();
     void handleServerEndpointChange();
 
@@ -35,6 +37,8 @@ private:
     QString currentIpText() const;
 
     QTcpServer* m_tcpServer;
+    QTcpSocket* redTcpSocket;
+    QTcpSocket* blackTcpSocket;
     QTcpSocket* m_tcpSocket;
 };
 

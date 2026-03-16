@@ -111,12 +111,13 @@ NetworkGame::NetworkGame(bool isServer)
     m_bIsTcpServer = isServer;
     setPerspectiveFlipped(!isServer);
     m_tcpServer = NULL;
-    m_tcpSocket = NULL;
+    redTcpSocket = NULL;
+    blackTcpSocket = NULL;
 
     QNetworkProxyFactory::setUseSystemConfiguration(false);
 
     initUI();
-
+    // 不会阻塞，只是设置监听信号和处理函数槽
     if(m_bIsTcpServer) //作为服务器端
     {
         m_tcpServer = new QTcpServer(this);
@@ -128,8 +129,9 @@ NetworkGame::NetworkGame(bool isServer)
         m_tcpSocket = new QTcpSocket(this);
         connect(m_tcpSocket, SIGNAL(readyRead()), this, SLOT(slotRecv()));
     }
-
+    // 释放鼠标时触发
     connect(ChessBoard::ui->btnTcpConnect, &QPushButton::released, this, &NetworkGame::onBtnTryConnect);
+    // IP下拉框和端口输入框改变时，调用handleServerEndpointChange（如果是server，调用onBtnTryConnect）
     connect(ChessBoard::ui->comboIp, &QComboBox::currentTextChanged, this, &NetworkGame::handleServerEndpointChange);
     connect(ChessBoard::ui->sbPort, static_cast<void(QSpinBox::*)(int)>(&QSpinBox::valueChanged), this, &NetworkGame::handleServerEndpointChange);
 }
@@ -189,13 +191,14 @@ void NetworkGame::clickPieces(int checkedID, int &row, int &col)
     arry[1] = row;
     arry[2] = col;
 
+    // 发送数据给对方
     if(m_tcpSocket)
         m_tcpSocket->write(arry, 3);
 }
-
+// 如果有数据就读取数据，并调用clickPieces函数
 void NetworkGame::slotNewConnection()
 {
-    if(m_tcpSocket) return;
+    if(redTcpSocket && blackTcpSocket) return;
 
     static std::once_flag flag;
     std::call_once(flag, [&]() {
@@ -205,30 +208,66 @@ void NetworkGame::slotNewConnection()
 
 
     if (m_tcpServer) {
-        m_tcpSocket = m_tcpServer->nextPendingConnection();
-        connect(m_tcpSocket, SIGNAL(readyRead()), this, SLOT(slotRecv()));
+        if(!redTcpSocket) {
+            redTcpSocket = m_tcpServer->nextPendingConnection();
+            connect(redTcpSocket, SIGNAL(readyRead()), this, SLOT(redSlotRecv()));
+        } else {
+            blackTcpSocket = m_tcpServer->nextPendingConnection();
+            connect(blackTcpSocket, SIGNAL(readyRead()), this, SLOT(blackSlotRecv()));
+        }
+        // m_tcpSocket = m_tcpServer->nextPendingConnection();
+        // connect(m_tcpSocket, SIGNAL(readyRead()), this, SLOT(slotRecv()));
     }
 }
-
-void NetworkGame::slotRecv()
-{
-    QByteArray arry = m_tcpSocket->readAll();
-
-    // 悔棋命令：0xFE 标记
-    if (static_cast<unsigned char>(arry[0]) == 0xFE) {
-        ChessBoard::back();
-        update();
-        return;
-    }
-
+void NetworkGame::redSlotRecv() {
+    slotRecv(redTcpSocket, blackTcpSocket, true);
+}
+void NetworkGame::blackSlotRecv() {
+    slotRecv(blackTcpSocket, redTcpSocket, false);
+}
+void NetworkGame::slotRecv(QTcpSocket* fromTcpSocket, QTcpSocket* toTcpSocket, bool isRed) {
+    QByteArray arry = fromTcpSocket->readAll();
     int nCheckedID = arry[0];
     int nRow = arry[1];
     int nCol = arry[2];
-
-    //qDebug()<<nCheckedID<<"   "<<nRow<<"   "<<nCol<<"   ";
-    ChessBoard::clickPieces(nCheckedID, nRow, nCol);
-    update();   // Force repaint so the last-move trail & text stay in sync on both peers
+    int killid=-1;
+    for(int i=0; i<32; ++i) {
+        if(!m_ChessPieces[i].m_bDead && m_ChessPieces[i].m_nRow==nRow && m_ChessPieces[i].m_nCol==nCol) {
+            killid = i;
+            break;
+        }
+    }
+    char res = 1;
+    if(!ChessBoard::tryMoveStone(nCheckedID, killid, nRow, nCol, isRed)) {
+        res = -1;
+        // 返回1，执行成功，返回-1，执行失败
+        fromTcpSocket->write(&res, 1);
+        return;
+    }
+    fromTcpSocket->write(&res, 1);
+    if(toTcpSocket) {
+        toTcpSocket->write(arry, 3);
+    }
 }
+// void NetworkGame::slotRecv()
+// {
+//     QByteArray arry = m_tcpSocket->readAll();
+
+//     // 悔棋命令：0xFE 标记
+//     if (static_cast<unsigned char>(arry[0]) == 0xFE) {
+//         ChessBoard::back();
+//         update();
+//         return;
+//     }
+
+//     int nCheckedID = arry[0];
+//     int nRow = arry[1];
+//     int nCol = arry[2];
+
+//     //qDebug()<<nCheckedID<<"   "<<nRow<<"   "<<nCol<<"   ";
+//     ChessBoard::clickPieces(nCheckedID, nRow, nCol);
+//     update();   // Force repaint so the last-move trail & text stay in sync on both peers
+// }
 
 void NetworkGame::back()
 {
@@ -254,7 +293,7 @@ void NetworkGame::back()
     ChessBoard::back();
     update();
 }
-
+// 服务器监听端口，客户端连接指定端口
 void NetworkGame::onBtnTryConnect()
 {
     auto& ui = ChessBoard::ui;
@@ -284,7 +323,7 @@ void NetworkGame::onBtnTryConnect()
         }
 
         const quint16 portValue = static_cast<quint16>(ui->sbPort->value());
-        // 监听指定地址和端口
+        // 非阻塞的监听指定地址和端口
         if (m_tcpServer->listen(bindAddress, portValue)) {
             text = QString("Server is listening on \"%1\" port \"%2\"").arg(bindAddress.toString()).arg(portValue);
         } else {

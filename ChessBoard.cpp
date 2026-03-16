@@ -164,8 +164,8 @@ int ChessBoard:: relation(int row1,int col1,int row2,int col2)
 //是否选中该枚棋子。pt为输入参数; row， col为输出参数
 bool ChessBoard::isChecked(QPointF pt, int &row, int &col)
 {
-    for (row = 0; row <= 9; row++) {
-        for (col = 0; col <= 8; col++) {
+    for (row = 0; row <= 9; row++) { // 10行
+        for (col = 0; col <= 8; col++) { // 9列
             QPointF temp = center(row, col);
             qreal dx = temp.x() - pt.x();  // 使用 qreal
             qreal dy = temp.y() - pt.y();  // 使用 qreal
@@ -910,7 +910,11 @@ bool ChessBoard::canMoveBING(int moveId, int killId, int row, int col)
 
     return true;
 }
-
+// 被选中的棋子颜色要和当前棋方的颜色相同
+bool ChessBoard:: canSelect(int id, bool isRedSend)
+{
+    return isRedSend==m_bIsRed && m_bIsRed== m_ChessPieces[id].m_bRed;
+}
 bool ChessBoard:: canSelect(int id)
 {
     return m_bIsRed== m_ChessPieces[id].m_bRed;
@@ -940,12 +944,13 @@ void ChessBoard::click(QPointF pt)
     // 将pt转化成象棋的行列值
     // 判断这个行列值上面有没有棋子
     int row, col;
-    bool bClicked = isChecked(pt, row, col);
+    bool bClicked = isChecked(pt, row, col); // 是否点击在有效区域内，如果是，计算出对应的row和col
     if (!bClicked) {
         return;
     }
 
-    int id = getStoneId(row, col);
+    int id = getStoneId(row, col); // 遍历32个象棋，找出位置为(row, col)的未死棋子，没找到则返回-1
+    // 应该是NetworkGame::clickPieces，因为这是个虚函数，父类可以调用子类的方法
     clickPieces(id, row, col);
 
 }
@@ -953,10 +958,10 @@ void ChessBoard::click(QPointF pt)
 void ChessBoard::clickPieces(int id, int &row, int &col)
 {
     if (this->m_nSelectID == -1) { // 如果点中的棋子之前未被选中
-        trySelectStone(id);
+        trySelectStone(id); // 之前没选中棋子，则选择棋子
     }
     else {
-        tryMoveStone(id, row, col);
+        tryMoveStone(id, row, col); // 如果之前已经选中棋子，则移动棋子
     }
 
 }
@@ -975,7 +980,7 @@ void ChessBoard::trySelectStone(int id)
     update();
     m_Chessvoice.voiceSelect();
 }
-
+// 如果目标位置有棋子，则killid为对于棋子id；否则为-1
 void ChessBoard::tryMoveStone(int killid, int row, int col)
 {
     if (killid != -1 && sameColor(killid, m_nSelectID)) {
@@ -989,6 +994,19 @@ void ChessBoard::tryMoveStone(int killid, int row, int col)
         m_nSelectID = -1;
         update();
     }
+}
+
+// 如果目标位置有棋子，则killid为对于棋子id；否则为-1
+bool ChessBoard::tryMoveStone(int nCheckedID, int killid, int row, int col, bool isRed)
+{
+    if (!canSelect(nCheckedID, isRed) ||  killid != -1 && sameColor(killid, nCheckedID)) {
+        return false;
+    }
+
+    if(!canMove(nCheckedID, killid, row, col)) return false;
+    doMoveStone(nCheckedID, killid, row, col);
+    update();
+    return true;
 }
 
 void ChessBoard::doMoveStone(int moveid, int killid, int row, int col)

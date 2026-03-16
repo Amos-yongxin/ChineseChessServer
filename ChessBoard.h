@@ -105,6 +105,7 @@ public:
     bool canMoveCHE(int moveId, int killId, int row, int col);
     bool canMovePAO(int moveId, int killId, int row, int col);
     bool canMoveBING(int moveId, int killId, int row, int col);
+    bool canSelect(int id, bool isRedSend);
     bool canSelect(int id);
     void init();
 
@@ -114,6 +115,7 @@ public:
     virtual void clickPieces(int id, int& row, int& col);                                   // 点击选棋
     void trySelectStone(int id);                                                            // 尝试选棋
     void tryMoveStone(int killid, int row, int col);                                        // 尝试移动
+    bool tryMoveStone(int nCheckedID, int killid, int row, int col, bool isRed);
     void doMoveStone(int moveid, int killid, int row, int col);                             // 执行移动棋子
     void saveStep(int moveid, int killid, int row, int col, QVector<ChessStep*>& steps);    // 保存步数
     QString textStep(int moveid, int row, int col);                                         // 文本棋谱
