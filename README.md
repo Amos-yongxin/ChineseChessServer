@@ -143,7 +143,10 @@ In addition, the source code summary is accompanied by detailed code comments fo
 3. Click Build > Compile in the bottom-left corner
 4. You should see it run successfully. Enjoy~
 
-
+#### build client
+```bash
+g++ client.cpp -o client.exe -lws2_32
+```
 
 ### Linux / Mac Build
 
