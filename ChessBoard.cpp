@@ -30,6 +30,9 @@ ChessBoard::ChessBoard(QWidget *parent) :
     if (ui->label) {
         ui->label->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     }
+
+    // 初始化errCnt
+    errCnt[0] = errCnt[1] = 0;
 }
 
 ChessBoard::~ChessBoard()
@@ -140,13 +143,13 @@ int ChessBoard::getStoneCountAtLine(int row1, int col1, int row2, int col2)
 
 void ChessBoard::whoWin()  //谁胜谁负
 {
-    if(m_ChessPieces[4].m_bDead && !m_ChessPieces[20].m_bDead)
+    if(m_ChessPieces[4].m_bDead && !m_ChessPieces[20].m_bDead || errCnt[0]>=maxErrCnt)
     {
         reset();
         winMessageBox("提示", "本局结束，红方胜利.");
     }
 
-    if(!m_ChessPieces[4].m_bDead && m_ChessPieces[20].m_bDead)
+    if(!m_ChessPieces[4].m_bDead && m_ChessPieces[20].m_bDead || errCnt[1]>=maxErrCnt)
     {
         reset();
         winMessageBox("提示", "本局结束，黑方胜利.");
@@ -913,7 +916,7 @@ bool ChessBoard::canMoveBING(int moveId, int killId, int row, int col)
 // 被选中的棋子颜色要和当前棋方的颜色相同
 bool ChessBoard:: canSelect(int id, bool isRedSend)
 {
-    return isRedSend==m_bIsRed && m_bIsRed== m_ChessPieces[id].m_bRed;
+    return id>=0 && id<32 && !m_ChessPieces[id].m_bDead && isRedSend==m_bIsRed && m_bIsRed== m_ChessPieces[id].m_bRed;
 }
 bool ChessBoard:: canSelect(int id)
 {

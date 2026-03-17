@@ -155,6 +155,8 @@ private slots:
 protected:
     Ui::ChessBoard *ui;
     bool         m_bTimerAutoStarted;
+    int errCnt[2];
+    const int maxErrCnt = 3;
 
 private:
     QTimer*      m_timer;                  // 定时器 每秒更新时间

@@ -240,6 +240,8 @@ void NetworkGame::slotRecv(QTcpSocket* fromTcpSocket, QTcpSocket* toTcpSocket, b
     char res = 1;
     if(!ChessBoard::tryMoveStone(nCheckedID, killid, nRow, nCol, isRed)) {
         res = -1;
+        errCnt[isRed]++;
+        ChessBoard::whoWin();
         // 返回1，执行成功，返回-1，执行失败
         fromTcpSocket->write(&res, 1);
         return;
