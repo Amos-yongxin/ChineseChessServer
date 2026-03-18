@@ -731,6 +731,8 @@ void ChessBoard::showNetworkGui(const bool &show)
 bool ChessBoard::canMove(int moveId, int killId, int row, int col)
 {
     //选棋id和吃棋id同色，则选择其它棋子并返回
+    if(row<0 || row>9 || col<0 || col>8) return false;
+
     if(sameColor(moveId,killId))
     {
         //换选棋子
