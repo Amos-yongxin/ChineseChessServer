@@ -291,6 +291,46 @@ border-image: url(:/images/b.jpg);
         </widget>
        </item>
        <item>
+        <widget class="QGroupBox" name="violationGroup">
+         <property name="title">
+          <string>违规次数</string>
+         </property>
+         <layout class="QGridLayout" name="gridLayoutViolation">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="labelViolationRed">
+            <property name="text">
+             <string>红方违规：</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLabel" name="labelViolationRedValue">
+            <property name="text">
+             <string>0/3</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="labelViolationBlack">
+            <property name="text">
+             <string>黑方违规：</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLabel" name="labelViolationBlackValue">
+            <property name="text">
+             <string>0/3</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
         <widget class="QLabel" name="labelTextStep">
          <property name="font">
           <font>

@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2019-2026 XMuli & Contributors
 // SPDX-GitHub: https://github.com/XMuli/ChineseChess
 // SPDX-Author: XMuli <xmulitech@gmail.com>
@@ -19,11 +19,64 @@
 #include <iterator>
 
 namespace {
+constexpr quint8 kGameOverPacketType = 0xFD;
+constexpr quint8 kTestCommandPacketType = 0xFC;
+constexpr quint8 kTestCommandLoadPreset = 0x01;
+
 struct IpCandidate {
     QString ip;
     QString label;
     int priority = 2;
 };
+
+struct TestPiecePlacement {
+    int id;
+    int row;
+    int col;
+};
+
+struct TestPreset {
+    quint8 id;
+    bool redFirst;
+    QVector<TestPiecePlacement> pieces;
+};
+
+const QVector<TestPreset>& testPresets()
+{
+    static const QVector<TestPreset> presets = {
+        {
+            1,
+            true,
+            {
+                {4, 0, 3},
+                {20, 9, 5},
+                {24, 2, 4},
+            }
+        },
+        {
+            2,
+            true,
+            {
+                {4, 0, 4},
+                {3, 1, 4},
+                {16, 1, 3},
+                {24, 2, 5},
+                {20, 9, 4},
+            }
+        },
+    };
+    return presets;
+}
+
+const TestPreset* findTestPreset(quint8 id)
+{
+    const auto& presets = testPresets();
+    for (const TestPreset& preset : presets) {
+        if (preset.id == id)
+            return &preset;
+    }
+    return nullptr;
+}
 
 bool isInterfaceUsable(const QNetworkInterface& iface)
 {
@@ -227,6 +280,23 @@ void NetworkGame::blackSlotRecv() {
 }
 void NetworkGame::slotRecv(QTcpSocket* fromTcpSocket, QTcpSocket* toTcpSocket, bool isRed) {
     QByteArray arry = fromTcpSocket->readAll();
+    if (arry.size() < 3) {
+        return;
+    }
+
+    const quint8 packetType = static_cast<quint8>(arry[0]);
+    if (packetType == kTestCommandPacketType) {
+        const quint8 command = static_cast<quint8>(arry[1]);
+        const quint8 presetId = static_cast<quint8>(arry[2]);
+        char res = -1;
+        if (command == kTestCommandLoadPreset && loadTestPreset(presetId)) {
+            res = 1;
+        }
+        fromTcpSocket->write(&res, 1);
+        fromTcpSocket->flush();
+        return;
+    }
+
     int nCheckedID = arry[0];
     int nRow = arry[1];
     int nCol = arry[2];
@@ -241,15 +311,24 @@ void NetworkGame::slotRecv(QTcpSocket* fromTcpSocket, QTcpSocket* toTcpSocket, b
     if(!ChessBoard::tryMoveStone(nCheckedID, killid, nRow, nCol, isRed)) {
         res = -1;
         errCnt[isRed]++;
-        ChessBoard::whoWin();
+        updateViolationDisplay();
+        QString message;
+        detectGameResult(false, message);
         // 返回1，执行成功，返回-1，执行失败
         fromTcpSocket->write(&res, 1);
+        fromTcpSocket->flush();
+        sendGameOverPacket();
+        presentLastGameResult();
         return;
     }
     fromTcpSocket->write(&res, 1);
     if(toTcpSocket) {
         toTcpSocket->write(arry, 3);
+        toTcpSocket->flush();
     }
+    fromTcpSocket->flush();
+    sendGameOverPacket();
+    presentLastGameResult();
 }
 // void NetworkGame::slotRecv()
 // {
@@ -400,4 +479,53 @@ QString NetworkGame::currentIpText() const
     if (ip.isEmpty())
         ip = combo->currentText();
     return ip.trimmed();
+}
+
+bool NetworkGame::loadTestPreset(quint8 presetId)
+{
+    const TestPreset* preset = findTestPreset(presetId);
+    if (!preset)
+        return false;
+
+    init();
+    for (int i = 0; i < 32; ++i) {
+        m_ChessPieces[i].m_bDead = true;
+    }
+
+    for (const TestPiecePlacement& piece : preset->pieces) {
+        if (piece.id < 0 || piece.id >= 32)
+            return false;
+        m_ChessPieces[piece.id].m_nRow = piece.row;
+        m_ChessPieces[piece.id].m_nCol = piece.col;
+        m_ChessPieces[piece.id].m_bDead = false;
+    }
+
+    m_bIsRed = preset->redFirst;
+    textStepRecord.clear();
+    drawTextStep();
+    clearLastGameResult();
+    resetRuleTracking();
+    updateViolationDisplay();
+    update();
+    return true;
+}
+
+void NetworkGame::sendGameOverPacket()
+{
+    if (lastGameResult() == GameResult::None)
+        return;
+
+    const char packet[2] = {
+        static_cast<char>(kGameOverPacketType),
+        static_cast<char>(lastGameResult()),
+    };
+
+    if (redTcpSocket) {
+        redTcpSocket->write(packet, 2);
+        redTcpSocket->flush();
+    }
+    if (blackTcpSocket) {
+        blackTcpSocket->write(packet, 2);
+        blackTcpSocket->flush();
+    }
 }

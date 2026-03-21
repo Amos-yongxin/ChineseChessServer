@@ -57,7 +57,7 @@ void MachineGame::getAllMoves(QVector<ChessStep *> &steps, bool forRed)
                 if (targetId != -1 && sameColor(id, targetId))
                     continue;
                 int killId = (targetId != -1) ? targetId : -1;
-                if (canMove(id, killId, row, col))
+                if (canMove(id, killId, row, col) && !wouldCauseSelfCheck(id, killId, row, col))
                     saveStep(id, killId, row, col, steps);
             }
         }

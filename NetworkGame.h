@@ -33,6 +33,8 @@ public slots:
     void handleServerEndpointChange();
 
 private:
+    bool loadTestPreset(quint8 presetId);
+    void sendGameOverPacket();
     void populateLocalIpChoices(const QStringList& candidates = QStringList(), const QString& preferredIp = QString());
     QString currentIpText() const;
 

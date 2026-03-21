@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2019-2026 XMuli & Contributors
 // SPDX-GitHub: https://github.com/XMuli/ChineseChess
 // SPDX-Author: XMuli <xmulitech@gmail.com>
@@ -31,8 +31,7 @@ ChessBoard::ChessBoard(QWidget *parent) :
         ui->label->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     }
 
-    // 初始化errCnt
-    errCnt[0] = errCnt[1] = 0;
+    updateViolationDisplay();
 }
 
 ChessBoard::~ChessBoard()
@@ -52,6 +51,9 @@ void ChessBoard::init()
     m_bIsOver = false;
     m_bIsShowStep = true;
     m_bTimerAutoStarted = false;
+    errCnt[0] = errCnt[1] = 0;
+    clearLastGameResult();
+    resetRuleTracking();
 }
 
 bool ChessBoard:: isRed(int id)
@@ -143,17 +145,9 @@ int ChessBoard::getStoneCountAtLine(int row1, int col1, int row2, int col2)
 
 void ChessBoard::whoWin()  //谁胜谁负
 {
-    if(m_ChessPieces[4].m_bDead && !m_ChessPieces[20].m_bDead || errCnt[0]>=maxErrCnt)
-    {
-        reset();
-        winMessageBox("提示", "本局结束，红方胜利.");
-    }
-
-    if(!m_ChessPieces[4].m_bDead && m_ChessPieces[20].m_bDead || errCnt[1]>=maxErrCnt)
-    {
-        reset();
-        winMessageBox("提示", "本局结束，黑方胜利.");
-    }
+    QString message;
+    detectGameResult(true, message);
+    presentLastGameResult();
 }
 int ChessBoard:: relation(int row1,int col1,int row2,int col2)
 {
@@ -550,31 +544,316 @@ QPointF ChessBoard::getRealPoint(QPointF pt)
 
 bool ChessBoard:: isGeneral()
 {
-    int generalId=20;   //当前回合方将军id
-    if(!m_bIsRed)
-        generalId=4;
+    return isSideInCheck(m_bIsRed);
+}
 
-    int row= m_ChessPieces[generalId].m_nRow;    //当前回合方的将军row
-    int col= m_ChessPieces[generalId].m_nCol;    //当前回合方的将军col
+bool ChessBoard::isSideInCheck(bool redSide)
+{
+    const int generalId = redSide ? 20 : 4;
+    if (m_ChessPieces[generalId].m_bDead)
+        return false;
 
-    for(int i=0; i<32; ++i)
-    {
-        if(m_bIsRed && i >= 16)    //红方回合：只检查黑子(0-15)能否将红帅
-            break;
-        if(!m_bIsRed && i < 16)    //黑方回合：跳过黑子，只检查红子(16-31)
+    const int row = m_ChessPieces[generalId].m_nRow;
+    const int col = m_ChessPieces[generalId].m_nCol;
+
+    for (int i = 0; i < 32; ++i) {
+        if (m_ChessPieces[i].m_bDead || m_ChessPieces[i].m_bRed == redSide)
             continue;
 
-        if(canMove(i,generalId,row,col) && !m_ChessPieces[i].m_bDead)   //依次遍历存活子能否移动到指定坐标
-        {
+        if (canMove(i, generalId, row, col))
             return true;
+    }
+
+    return false;
+}
+
+bool ChessBoard::wouldCauseSelfCheck(int moveId, int killId, int row, int col)
+{
+    const bool moverRed = isRed(moveId);
+    const int oldRow = m_ChessPieces[moveId].m_nRow;
+    const int oldCol = m_ChessPieces[moveId].m_nCol;
+    const bool killedWasDead = (killId == -1) ? true : m_ChessPieces[killId].m_bDead;
+
+    if (killId != -1)
+        m_ChessPieces[killId].m_bDead = true;
+
+    m_ChessPieces[moveId].m_nRow = row;
+    m_ChessPieces[moveId].m_nCol = col;
+
+    const bool checked = isSideInCheck(moverRed);
+
+    m_ChessPieces[moveId].m_nRow = oldRow;
+    m_ChessPieces[moveId].m_nCol = oldCol;
+    if (killId != -1)
+        m_ChessPieces[killId].m_bDead = killedWasDead;
+
+    return checked;
+}
+
+bool ChessBoard::hasAnyLegalMove(bool redSide)
+{
+    const bool previousTurn = m_bIsRed;
+    m_bIsRed = redSide;
+
+    for (int id = 0; id < 32; ++id) {
+        if (m_ChessPieces[id].m_bDead || m_ChessPieces[id].m_bRed != redSide)
+            continue;
+
+        for (int row = 0; row < 10; ++row) {
+            for (int col = 0; col < 9; ++col) {
+                const int killId = getStoneId(row, col);
+                if (killId != -1 && sameColor(id, killId))
+                    continue;
+                if (!canMove(id, killId, row, col))
+                    continue;
+                if (wouldCauseSelfCheck(id, killId, row, col))
+                    continue;
+
+                m_bIsRed = previousTurn;
+                return true;
+            }
         }
     }
+
+    m_bIsRed = previousTurn;
     return false;
 }
 
 void ChessBoard::showNetworkGui(const bool &show)
 {
     ui->networkGroup->setVisible(show);
+    if (ui->violationGroup) {
+        ui->violationGroup->setVisible(show);
+    }
+}
+
+void ChessBoard::updateViolationDisplay()
+{
+    if (!ui)
+        return;
+
+    if (ui->labelViolationRedValue) {
+        ui->labelViolationRedValue->setText(QString("%1/%2").arg(errCnt[1]).arg(maxErrCnt));
+    }
+    if (ui->labelViolationBlackValue) {
+        ui->labelViolationBlackValue->setText(QString("%1/%2").arg(errCnt[0]).arg(maxErrCnt));
+    }
+}
+
+ChessBoard::GameResult ChessBoard::lastGameResult() const
+{
+    return m_lastGameResult;
+}
+
+QString ChessBoard::lastGameMessage() const
+{
+    return m_lastGameMessage;
+}
+
+void ChessBoard::clearLastGameResult()
+{
+    m_lastGameResult = GameResult::None;
+    m_lastGameMessage.clear();
+}
+
+void ChessBoard::presentLastGameResult()
+{
+    if (m_lastGameResult == GameResult::None || m_lastGameMessage.isEmpty())
+        return;
+
+    const QString message = m_lastGameMessage;
+    reset();
+    winMessageBox("提示", message);
+    clearLastGameResult();
+}
+
+QString ChessBoard::boardSignature() const
+{
+    QStringList parts;
+    parts.reserve(33);
+    parts.append(m_bIsRed ? "R" : "B");
+
+    for (int i = 0; i < 32; ++i) {
+        const ChessPieces& piece = m_ChessPieces[i];
+        parts.append(QStringLiteral("%1:%2:%3:%4")
+                         .arg(i)
+                         .arg(piece.m_bDead ? 1 : 0)
+                         .arg(piece.m_nRow)
+                         .arg(piece.m_nCol));
+    }
+
+    return parts.join('|');
+}
+
+void ChessBoard::resetRuleTracking()
+{
+    m_positionHistory.clear();
+    m_moveTraces.clear();
+    m_positionHistory.append(boardSignature());
+}
+
+QSet<int> ChessBoard::chaseTargetsForPiece(int moveid) const
+{
+    QSet<int> targets;
+    if (moveid < 0 || moveid >= 32 || m_ChessPieces[moveid].m_bDead)
+        return targets;
+
+    const bool targetRed = !m_ChessPieces[moveid].m_bRed;
+    for (int targetId = 0; targetId < 32; ++targetId) {
+        if (m_ChessPieces[targetId].m_bDead || m_ChessPieces[targetId].m_bRed != targetRed)
+            continue;
+        if (m_ChessPieces[targetId].m_emType == ChessPieces::JIANG)
+            continue;
+        if (const_cast<ChessBoard*>(this)->canMove(moveid, targetId, m_ChessPieces[targetId].m_nRow, m_ChessPieces[targetId].m_nCol)) {
+            targets.insert(targetId);
+        }
+    }
+
+    return targets;
+}
+
+void ChessBoard::recordBoardState(int moveid)
+{
+    MoveTrace trace;
+    trace.moverRed = isRed(moveid);
+    trace.givesCheck = isSideInCheck(m_bIsRed);
+    trace.chaseTargets = chaseTargetsForPiece(moveid);
+
+    m_moveTraces.append(trace);
+    m_positionHistory.append(boardSignature());
+}
+
+bool ChessBoard::sideAllChecks(const QVector<MoveTrace>& traces, bool redSide) const
+{
+    bool found = false;
+    for (const MoveTrace& trace : traces) {
+        if (trace.moverRed != redSide)
+            continue;
+        found = true;
+        if (!trace.givesCheck)
+            return false;
+    }
+    return found;
+}
+
+bool ChessBoard::sideAllChases(const QVector<MoveTrace>& traces, bool redSide) const
+{
+    bool found = false;
+    QSet<int> commonTargets;
+
+    for (const MoveTrace& trace : traces) {
+        if (trace.moverRed != redSide)
+            continue;
+
+        if (trace.givesCheck || trace.chaseTargets.isEmpty())
+            return false;
+
+        if (!found) {
+            commonTargets = trace.chaseTargets;
+            found = true;
+        } else {
+            commonTargets.intersect(trace.chaseTargets);
+        }
+
+        if (commonTargets.isEmpty())
+            return false;
+    }
+
+    return found && !commonTargets.isEmpty();
+}
+
+bool ChessBoard::detectRepeatedOutcome(GameResult& result, QString& message)
+{
+    if (m_positionHistory.size() < 3)
+        return false;
+
+    const QString current = m_positionHistory.last();
+    QVector<int> occurrences;
+    for (int i = 0; i < m_positionHistory.size(); ++i) {
+        if (m_positionHistory[i] == current)
+            occurrences.append(i);
+    }
+
+    if (occurrences.size() < 3)
+        return false;
+
+    const int first = occurrences[occurrences.size() - 3];
+    const int second = occurrences[occurrences.size() - 2];
+    const int third = occurrences[occurrences.size() - 1];
+    const int gap1 = second - first;
+    const int gap2 = third - second;
+    if (gap1 <= 0 || gap1 != gap2)
+        return false;
+
+    QVector<MoveTrace> cycle;
+    for (int moveIndex = second; moveIndex < third; ++moveIndex) {
+        if (moveIndex >= 0 && moveIndex < m_moveTraces.size())
+            cycle.append(m_moveTraces[moveIndex]);
+    }
+
+    const bool redLongCheck = sideAllChecks(cycle, true);
+    const bool blackLongCheck = sideAllChecks(cycle, false);
+    if (redLongCheck && !blackLongCheck) {
+        result = GameResult::BlackWin;
+        message = QStringLiteral("本局结束，红方长将判负，黑方胜利.");
+        return true;
+    }
+    if (blackLongCheck && !redLongCheck) {
+        result = GameResult::RedWin;
+        message = QStringLiteral("本局结束，黑方长将判负，红方胜利.");
+        return true;
+    }
+
+    const bool redLongChase = sideAllChases(cycle, true);
+    const bool blackLongChase = sideAllChases(cycle, false);
+    if (redLongChase && !blackLongChase) {
+        result = GameResult::BlackWin;
+        message = QStringLiteral("本局结束，红方长捉判负，黑方胜利.");
+        return true;
+    }
+    if (blackLongChase && !redLongChase) {
+        result = GameResult::RedWin;
+        message = QStringLiteral("本局结束，黑方长捉判负，红方胜利.");
+        return true;
+    }
+
+    result = GameResult::Draw;
+    message = QStringLiteral("本局结束，重复局面判和.");
+    return true;
+}
+
+ChessBoard::GameResult ChessBoard::detectGameResult(bool includeBoardState, QString& message)
+{
+    clearLastGameResult();
+    GameResult result = GameResult::None;
+
+    if ((m_ChessPieces[4].m_bDead && !m_ChessPieces[20].m_bDead) || errCnt[0] >= maxErrCnt) {
+        result = GameResult::RedWin;
+        message = errCnt[0] >= maxErrCnt
+            ? QStringLiteral("本局结束，黑方累计 3 次违规，红方胜利.")
+            : QStringLiteral("本局结束，红方胜利.");
+    } else if ((!m_ChessPieces[4].m_bDead && m_ChessPieces[20].m_bDead) || errCnt[1] >= maxErrCnt) {
+        result = GameResult::BlackWin;
+        message = errCnt[1] >= maxErrCnt
+            ? QStringLiteral("本局结束，红方累计 3 次违规，黑方胜利.")
+            : QStringLiteral("本局结束，黑方胜利.");
+    } else if (includeBoardState) {
+        if (!hasAnyLegalMove(m_bIsRed)) {
+            const bool checked = isSideInCheck(m_bIsRed);
+            const QString loser = m_bIsRed ? QStringLiteral("红") : QStringLiteral("黑");
+            const QString winner = m_bIsRed ? QStringLiteral("黑") : QStringLiteral("红");
+            result = m_bIsRed ? GameResult::BlackWin : GameResult::RedWin;
+            message = checked
+                ? QStringLiteral("本局结束，%1方被将死，%2方胜利.").arg(loser, winner)
+                : QStringLiteral("本局结束，%1方困毙，%2方胜利.").arg(loser, winner);
+        } else if (detectRepeatedOutcome(result, message)) {
+            // result/message already assigned
+        }
+    }
+
+    m_lastGameResult = result;
+    m_lastGameMessage = message;
+    return result;
 }
 
 //鼠标按下事件
@@ -994,6 +1273,9 @@ void ChessBoard::tryMoveStone(int killid, int row, int col)
     }
 
     bool ret = canMove(m_nSelectID, killid, row, col);
+    if (ret && wouldCauseSelfCheck(m_nSelectID, killid, row, col)) {
+        ret = false;
+    }
     if (ret) {
         doMoveStone(m_nSelectID, killid, row, col);
         m_nSelectID = -1;
@@ -1009,19 +1291,25 @@ bool ChessBoard::tryMoveStone(int nCheckedID, int killid, int row, int col, bool
     }
 
     if(!canMove(nCheckedID, killid, row, col)) return false;
-    doMoveStone(nCheckedID, killid, row, col);
+    if(wouldCauseSelfCheck(nCheckedID, killid, row, col)) return false;
+    doMoveStone(nCheckedID, killid, row, col, false);
     update();
     return true;
 }
 
-void ChessBoard::doMoveStone(int moveid, int killid, int row, int col)
+void ChessBoard::doMoveStone(int moveid, int killid, int row, int col, bool presentResult)
 {
     autoStartTimerIfNeeded();
     saveStep(moveid, killid, row, col, m_ChessSteps);
 
     killStone(killid);
     moveStone(moveid, row, col);
-    whoWin();
+    recordBoardState(moveid);
+    QString message;
+    detectGameResult(true, message);
+    if (presentResult) {
+        presentLastGameResult();
+    }
 
     if(killid== -1)
         m_Chessvoice.voiceMove(); //移动音效
@@ -1093,6 +1381,14 @@ void ChessBoard::backOne()
     update();
     delete step;
     m_Chessvoice.voiceBack();
+    clearLastGameResult();
+
+    if (!m_moveTraces.isEmpty()) {
+        m_moveTraces.removeLast();
+    }
+    if (m_positionHistory.size() > 1) {
+        m_positionHistory.removeLast();
+    }
 
     // 悔棋到第0步时停止计时器
     if (m_ChessSteps.size() == 0 && m_bTimerAutoStarted) {
@@ -1152,6 +1448,7 @@ void ChessBoard::on_pushButton_about_clicked()
 void ChessBoard::on_pushButton_restart_clicked()
 {
     init();
+    updateViolationDisplay();
     on_pushButton_reset_clicked();
     update();
 }
@@ -1172,5 +1469,3 @@ void ChessBoard::on_pushButton_toMenu_clicked()
 {
     emit this->toMenu();
 }
-
-

@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2019-2026 XMuli & Contributors
 // SPDX-GitHub: https://github.com/XMuli/ChineseChess
 // SPDX-Author: XMuli <xmulitech@gmail.com>
@@ -35,10 +35,12 @@
 #include <QFrame>
 #include <QPainter>
 #include <QPoint>
+#include <QStringList>
 #include <QMouseEvent>
 #include <QTimer>
 #include <QTime>
 #include <QMessageBox>
+#include <QSet>
 #include <QtGlobal>
 #include "ChessPieces.h"
 #include "AboutAuthor.h"
@@ -54,6 +56,13 @@ class ChessBoard : public QMainWindow
     Q_OBJECT
 
 public:
+    enum class GameResult : quint8 {
+        None = 0,
+        RedWin = 1,
+        BlackWin = 2,
+        Draw = 3,
+    };
+
     explicit ChessBoard(QWidget *parent = 0);
     ~ChessBoard();
 
@@ -72,8 +81,20 @@ public:
     QPointF getRealPoint(QPointF pt);                          // 使mouseMoveEvent取得的坐标同Painter的坐标一致
     bool isGeneral();                                        // 校验将移动后位置是否将死
     void showNetworkGui(const bool& show = false);
+    void updateViolationDisplay();
+    GameResult lastGameResult() const;
+    QString lastGameMessage() const;
+    void clearLastGameResult();
+    void presentLastGameResult();
 
 private:
+    struct MoveTrace {
+        bool moverRed = false;
+        bool givesCheck = false;
+        QSet<int> chaseTargets;
+    };
+
+protected:
     bool hongMenFeast();                                     // 鸿门宴：对将
     bool havePieces(int row, int col);                       // 判断某一格子，是否有棋子
     void reset();                                            // 胜负已分，重置
@@ -81,6 +102,14 @@ private:
     void startGameTimer();
     void pauseGameTimer();
     void autoStartTimerIfNeeded();
+    GameResult detectGameResult(bool includeBoardState, QString& message);
+    bool detectRepeatedOutcome(GameResult& result, QString& message);
+    QString boardSignature() const;
+    void resetRuleTracking();
+    void recordBoardState(int moveid);
+    QSet<int> chaseTargetsForPiece(int moveid) const;
+    bool sideAllChecks(const QVector<MoveTrace>& traces, bool redSide) const;
+    bool sideAllChases(const QVector<MoveTrace>& traces, bool redSide) const;
 
 public:
     //视图相关
@@ -107,6 +136,9 @@ public:
     bool canMoveBING(int moveId, int killId, int row, int col);
     bool canSelect(int id, bool isRedSend);
     bool canSelect(int id);
+    bool isSideInCheck(bool redSide);
+    bool wouldCauseSelfCheck(int moveId, int killId, int row, int col);
+    bool hasAnyLegalMove(bool redSide);
     void init();
 
     //移动相关
@@ -116,7 +148,7 @@ public:
     void trySelectStone(int id);                                                            // 尝试选棋
     void tryMoveStone(int killid, int row, int col);                                        // 尝试移动
     bool tryMoveStone(int nCheckedID, int killid, int row, int col, bool isRed);
-    void doMoveStone(int moveid, int killid, int row, int col);                             // 执行移动棋子
+    void doMoveStone(int moveid, int killid, int row, int col, bool presentResult = true);  // 执行移动棋子
     void saveStep(int moveid, int killid, int row, int col, QVector<ChessStep*>& steps);    // 保存步数
     QString textStep(int moveid, int row, int col);                                         // 文本棋谱
 
@@ -138,6 +170,10 @@ public:
     bool m_bIsShowStep;                    // 是否显示步数
     bool m_bReverseView;                   // 是否翻转视角以便本地玩家
     QString textStepRecord;                // 文本棋谱字符串
+    QStringList m_positionHistory;         // 局面历史（含轮到哪方）
+    QVector<MoveTrace> m_moveTraces;       // 每一步的规则标签
+    GameResult m_lastGameResult;           // 最近一次终局结果
+    QString m_lastGameMessage;             // 最近一次终局消息
 
 signals:
     void toMenu();
