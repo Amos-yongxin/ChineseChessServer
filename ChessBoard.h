@@ -43,7 +43,6 @@
 #include <QSet>
 #include <QtGlobal>
 #include "ChessPieces.h"
-#include "AboutAuthor.h"
 #include "ChessVoice.h"
 #include "ChessStep.h"
 
@@ -182,7 +181,6 @@ private slots:
     void updateTime();
     void on_pushButton_start_clicked();
     void on_pushButton_reset_clicked();
-    void on_pushButton_about_clicked();
     void on_pushButton_restart_clicked();
     void on_pushButton_back_clicked();
     void on_pushButton_showStep_clicked();
@@ -198,7 +196,6 @@ private:
     QTimer*      m_timer;                  // 定时器 每秒更新时间
     QTime*       m_timeRecord;             // 记录时间
     bool         m_bIsStart;               // 记录是否已经开始计时
-    AboutAuthor* m_pAbout;
 };
 
 #endif // CHESSBOARD_H

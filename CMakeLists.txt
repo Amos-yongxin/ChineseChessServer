@@ -1,7 +1,7 @@
 #-------------------------------------------------
 # Project created by QtCreator 2019-01-22T19:52:58
 #
-# 关于作者:
+# 项目信息:
 # 偕臧 xmulitech@gmail.com
 # 项目完成时间: 2019-02-01
 # 功能更新时间: 2026-02-04
@@ -94,9 +94,6 @@ set(src_files
     NetworkGame.cpp
     ChooseMainWindow.h
     ChooseMainWindow.cpp
-    AboutAuthor.h
-    AboutAuthor.cpp
-    AboutAuthor.ui
     PuzzleData.h
     PuzzleData.cpp
     PuzzleGame.h

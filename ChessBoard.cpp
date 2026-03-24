@@ -21,8 +21,6 @@ ChessBoard::ChessBoard(QWidget *parent) :
     m_bIsStart = false;  //初始为还未计时
     connect(m_timer,SIGNAL(timeout()),this,SLOT(updateTime()));
 
-    m_pAbout = new AboutAuthor();
-
     this->setWindowIcon(QIcon(":/images/chess.svg"));
     ui->setupUi(this);
 
@@ -1437,12 +1435,6 @@ void ChessBoard::on_pushButton_reset_clicked()
     ui->pushButton_start->setText("开始");
     ui->pushButton_start->setEnabled(true);
     m_bTimerAutoStarted = false;
-}
-
-void ChessBoard::on_pushButton_about_clicked()
-{
-    m_pAbout->setWindowTitle("关于作者");
-    m_pAbout->show();
 }
 
 void ChessBoard::on_pushButton_restart_clicked()
