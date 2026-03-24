@@ -13,7 +13,11 @@ DEFAULT_TIMEOUT_MS = 1000
 NO_SYNC_TIMEOUT_MS = 250
 CONNECT_GAP_MS = 120
 GAME_OVER_TIMEOUT_MS = 600
+ROLE_PACKET_TYPE = 0xFB
 GAME_OVER_PACKET_TYPE = 0xFD
+ROLE_STATUS_INVALID = 0xFF
+ROLE_STATUS_OCCUPIED = 0xFE
+ROLE_STATUS_REPEATED = 0xFD
 TEST_COMMAND_PACKET_TYPE = 0xFC
 TEST_COMMAND_LOAD_PRESET = 0x01
 
@@ -155,6 +159,16 @@ class ProtocolClient:
         self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout_ms / 1000.0)
         self.sock.settimeout(self.timeout_ms / 1000.0)
 
+    def declare_role(self) -> None:
+        role_code = 1 if self.name == "red" else 2
+        self.send_raw(bytes([ROLE_PACKET_TYPE, role_code]))
+
+    def receive_role_status(self) -> int:
+        raw = self.recv_exact(2, timeout_ms=self.timeout_ms)
+        if len(raw) != 2 or raw[0] != ROLE_PACKET_TYPE:
+            raise ValueError(f"{self.name} unexpected role handshake payload: {list(raw)}")
+        return raw[1]
+
     def close(self) -> None:
         if self.sock is not None:
             try:
@@ -265,6 +279,15 @@ class SuiteRunner:
             red.connect()
             time.sleep(CONNECT_GAP_MS / 1000.0)
             black.connect()
+            red.declare_role()
+            black.declare_role()
+
+            red_status = red.receive_role_status()
+            black_status = black.receive_role_status()
+            if red_status != 1 or black_status != 2:
+                raise RuntimeError(
+                    f"role handshake failed: red_status={red_status}, black_status={black_status}"
+                )
 
             for step in suite.steps:
                 result = self._run_step(suite, step, red, black, board, violations)
@@ -522,7 +545,7 @@ def build_suites() -> Dict[str, Suite]:
     suites = {
         "smoke": Suite(
             name="smoke",
-            description="验证双连接、红黑顺序、合法 ACK、合法同步和基本回合切换。",
+            description="验证双连接、显式角色握手、合法 ACK、合法同步和基本回合切换。",
             steps=[
                 move_step("red pawn forward", "red", (29, 5, 4), 1),
                 move_step("black pawn forward", "black", (13, 4, 4), 1),

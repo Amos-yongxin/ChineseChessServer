@@ -120,17 +120,37 @@ ChooseMainWindow::ChooseMainWindow(QWidget *parent) : QDialog(parent)
             this,
             "提示",
             "是否作为[服务器]启动?<br>"
-            "- Yes: 服务器, 属红方<br>"
-            "- No: 客户端, 属黑方<br><br>"
+            "- Yes: 服务器，负责监听并接收 red/black 角色声明<br>"
+            "- No: 客户端，随后选择本端角色 red/black<br><br>"
             "<a href=\"https://github.com/XMuli/ChineseChess/wiki/%E7%BD%91%E7%BB%9C%E5%AF%B9%E6%88%98%E6%A8%A1%E5%BC%8F%E8%AE%BE%E7%BD%AE\">📢:  📖 Wiki</a>",
             QMessageBox::Yes | QMessageBox::No
             );
 
         const bool& bServer = ret == QMessageBox::Yes ? true : false;
+        bool localIsRed = false;
+        if (!bServer) {
+            bool ok = false;
+            const QString roleText = QInputDialog::getItem(
+                this,
+                "客户端角色",
+                "请选择本端角色（需与赛前约定一致）：",
+                {"红方", "黑方"},
+                0,
+                false,
+                &ok
+            );
+            if (!ok) {
+                this->show();
+                return;
+            }
+            localIsRed = (roleText == "红方");
+        }
 
-        m_pNetworkGame = new NetworkGame(bServer);
+        m_pNetworkGame = new NetworkGame(bServer, localIsRed);
         m_pNetworkGame->showNetworkGui(true);
-        const QString& title = QString("双人网络对战 [%1] [%2]").arg(bServer ? "服务器 - 红方" : "客户端 - 黑方").arg(XPROJECT_VERSION) ;
+        const QString& title = QString("双人网络对战 [%1] [%2]")
+                                   .arg(bServer ? "服务器" : QString("客户端 - %1").arg(localIsRed ? "红方" : "黑方"))
+                                   .arg(XPROJECT_VERSION);
         m_pNetworkGame->setWindowTitle(title);
         m_pNetworkGame->show();
 

@@ -7,6 +7,7 @@
 #define NETWORKGAME_H
 
 #include "ChessBoard.h"
+#include <QHash>
 #include <QTcpServer>
 #include <QTcpSocket>
 
@@ -17,8 +18,14 @@ class NetworkGame : public ChessBoard
 {
     Q_OBJECT
 
+    enum class Role : quint8 {
+        None = 0,
+        Red = 1,
+        Black = 2,
+    };
+
 public:
-    NetworkGame(bool isServer);
+    explicit NetworkGame(bool isServer, bool localIsRed = false);
     ~NetworkGame() = default;
     void initUI();
     void clickPieces(int checkedID, int& row, int& col) override;
@@ -26,9 +33,7 @@ public:
 
 public slots:
     void slotNewConnection();
-    void slotRecv(QTcpSocket* fromTcpSocket, QTcpSocket* toTcpSocket, bool isRed);
-    void redSlotRecv();
-    void blackSlotRecv();
+    void slotClientReadyRead();
     void onBtnTryConnect();
     void handleServerEndpointChange();
 
@@ -37,7 +42,31 @@ private:
     void sendGameOverPacket();
     void populateLocalIpChoices(const QStringList& candidates = QStringList(), const QString& preferredIp = QString());
     QString currentIpText() const;
+    static Role roleFromCode(quint8 code);
+    static quint8 roleToCode(Role role);
+    static QString roleLabel(Role role);
+    bool localRoleIsRed() const;
+    bool remoteRoleIsRed() const;
+    bool bothRolesReady() const;
+    int findOccupantId(int row, int col) const;
+    void updateConnectionStatus(const QString& overrideText = QString());
+    void sendRoleStatus(QTcpSocket* socket, quint8 status);
+    void disconnectSocketWithRoleStatus(QTcpSocket* socket, quint8 status, const QString& text);
+    void finalizeHandshakeIfReady();
+    void handleSocketDisconnected(QTcpSocket* socket);
+    void handleServerReadyRead(QTcpSocket* socket);
+    void processClientBuffer();
+    void processServerPacket(QTcpSocket* fromTcpSocket, const QByteArray& packet);
+    void handleRemoteGameOver(quint8 code);
 
+    bool m_isServerHost;
+    Role m_localRole;
+    bool m_clientHandshakeDone;
+    bool m_waitingForAck;
+    bool m_expectOptionalGameOver;
+    QByteArray m_clientBuffer;
+    QHash<QTcpSocket*, QByteArray> m_serverBuffers;
+    QHash<QTcpSocket*, Role> m_serverRoles;
     QTcpServer* m_tcpServer;
     QTcpSocket* redTcpSocket;
     QTcpSocket* blackTcpSocket;
